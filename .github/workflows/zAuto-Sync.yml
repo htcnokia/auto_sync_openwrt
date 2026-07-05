@@ -1,4 +1,4 @@
-name: Auto Sync Upstream & Workflow Mod
+name: Auto Sync Upstream
 
 on:
   schedule:
