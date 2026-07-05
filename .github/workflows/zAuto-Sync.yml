@@ -19,7 +19,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: main
-        token: ${{ secrets.PAT_TOKEN }}
+        token: ${{ secrets.PAT_TOKEN2 }}
         persist-credentials: true
         fetch-depth: 0
 
@@ -112,7 +112,7 @@ jobs:
 
     - name: Push Synced & Modified Changes
       env:
-        GIT_AUTH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        GIT_AUTH_TOKEN: ${{ secrets.PAT_TOKEN2 }}
       run: |
         set -euo pipefail
         if [ -n "$(git status --porcelain)" ]; then
