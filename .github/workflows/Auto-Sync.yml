@@ -3,11 +3,11 @@ name: Auto Sync Upstream & Workflow Mod
 on:
   schedule:
     # 每天北京时间早上 04:30 自动运行（UTC 20:30）
-    - cron: '30 20 * * *'
+    - cron: 30 20 * * *
   workflow_dispatch: # 保留手动触发按钮
 
-permissions:
-  contents: write
+permissions: write-all
+  
 
 jobs:
   sync_and_modify:
