@@ -6,9 +6,7 @@ on:
     - cron: '30 20 * * *'
   workflow_dispatch: # 保留手动触发按钮
 
-permissions:
-  contents: none
-  workflows: write
+permissions: write-all
 
 jobs:
   trigger_remote:
