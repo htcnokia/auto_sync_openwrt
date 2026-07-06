@@ -1,127 +1,38 @@
-name: Auto Sync Upstream
+name: Auto Trigger Remote Workflow
 
 on:
   schedule:
     # 每天北京时间早上 04:30 自动运行（UTC 20:30）
-    - cron: 30 20 * * *
+    - cron: '30 20 * * *'
   workflow_dispatch: # 保留手动触发按钮
 
-permissions: write-all
-  
+permissions:
+  contents: none
+  workflows: write
 
 jobs:
-  sync_and_modify:
+  trigger_remote:
     runs-on: ubuntu-latest
-    name: Automated Sync and Strict Workflow Trimming
+    name: Trigger htcnokia/OpenWRT-CI Auto-Sync
 
     steps:
-    - name: Checkout target repo with PAT
-      uses: actions/checkout@v4
-      with:
-        ref: main
-        token: ${{ secrets.PAT_TOKEN2 }}
-        persist-credentials: true
-        fetch-depth: 0
-
-    - name: Configure git identity
+    - name: Check PAT available
       run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-    - name: Fetch and Merge Upstream
-      run: |
-        # 请根据你的上游仓库 URL 调整下面的 remote
-        git remote add upstream https://github.com/VIKINGYFY/OpenWRT-CI.git || true
-        git fetch upstream main || true
-        # 合并上游 main（若无变更会返回 non-zero，我们容错处理）
-        git merge upstream/main --allow-unrelated-histories -m "🔄 Auto Sync: Fetch latest upstream" || echo "No remote changes to merge"
-
-    - name: Install yq for safe YAML edits (fallbacks included)
-      run: |
-        # 安装 mikefarah 的 yq（用于安全修改 workflow YAML）
-        YQ=/usr/local/bin/yq
-        if ! command -v yq >/dev/null 2>&1; then
-          sudo wget -q -O $YQ https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x $YQ
+        if [ -z "${{ secrets.PAT_TOKEN2 }}" ]; then
+          echo "ERROR: secrets.PAT_TOKEN is empty" >&2
+          exit 1
         fi
-        yq --version
+        echo "PAT token present (not displayed)."
 
-    - name: Force Modify Downloaded Workflows (use yq where possible)
-      run: |
-        set -euo pipefail
-
-        # 1) 禁用 MTK-ALL.yml 的 workflow_run 触发（用 yq 删除触发器键）
-        if [ -f ".github/workflows/MTK-ALL.yml" ]; then
-          if command -v yq >/dev/null 2>&1; then
-            yq eval 'del(.on.workflow_run)' -i .github/workflows/MTK-ALL.yml || true
-            echo "🚫 Disabled on.workflow_run via yq for MTK-ALL.yml"
-          else
-            # 最小改变：只删除单行包含 workflow_run 的触发器定义（更安全的 sed）
-            sed -i '/^on:/,/^jobs:/ {/^  workflow_run:/d}' .github/workflows/MTK-ALL.yml || true
-            echo "🚫 Disabled on.workflow_run via sed fallback for MTK-ALL.yml"
-          fi
-        fi
-
-        # 2) 精简 OWRT-ALL.yml 矩阵，只保留 X86 编译（用 yq 修改 matrix.CONFIG）
-        if [ -f ".github/workflows/OWRT-ALL.yml" ]; then
-          if command -v yq >/dev/null 2>&1; then
-            # 将所有 job 中存在的策略矩阵 CONFIG 设置为仅 X86（如果不存在则不报错）
-            yq eval '(.jobs[]?.strategy?.matrix?.CONFIG) = ["X86"]' -i .github/workflows/OWRT-ALL.yml || true
-            echo "🎯 Constrained OWRT-ALL.yml matrix to X86 only via yq"
-          else
-            sed -i 's/CONFIG: \[.*\]/CONFIG: [X86]/g' .github/workflows/OWRT-ALL.yml || true
-            echo "🎯 Constrained OWRT-ALL.yml matrix to X86 only via sed fallback"
-          fi
-        fi
-
-        # 3) 精简 QCA-ALL.yml 矩阵，只保留 IPQ60XX-WIFI-NO
-        if [ -f ".github/workflows/QCA-ALL.yml" ]; then
-          if command -v yq >/dev/null 2>&1; then
-            yq eval '(.jobs[]?.strategy?.matrix?.CONFIG) = ["IPQ60XX-WIFI-NO"]' -i .github/workflows/QCA-ALL.yml || true
-            echo "🎯 Constrained QCA-ALL.yml matrix to IPQ60XX-WIFI-NO only via yq"
-          else
-            sed -i 's/CONFIG: \[.*\]/CONFIG: [IPQ60XX-WIFI-NO]/g' .github/workflows/QCA-ALL.yml || true
-            echo "🎯 Constrained QCA-ALL.yml matrix to IPQ60XX-WIFI-NO only via sed fallback"
-          fi
-        fi
-
-        # 4) 修改 Config/GENERAL.txt，确保开启 timecontrol（=y）
-        if [ -f "Config/GENERAL.txt" ]; then
-          if grep -q "^CONFIG_PACKAGE_luci-app-timecontrol" Config/GENERAL.txt; then
-            sed -i 's/^CONFIG_PACKAGE_luci-app-timecontrol.*/CONFIG_PACKAGE_luci-app-timecontrol=y/' Config/GENERAL.txt
-            echo "📝 Set CONFIG_PACKAGE_luci-app-timecontrol=y in Config/GENERAL.txt"
-          else
-            echo "CONFIG_PACKAGE_luci-app-timecontrol=y" >> Config/GENERAL.txt
-            echo "📝 Appended CONFIG_PACKAGE_luci-app-timecontrol=y to Config/GENERAL.txt"
-          fi
-        fi
-
-    - name: Validate YAMLs (syntax check)
-      run: |
-        # 用 yq 快速校验 workflow 的基本语法（如果 yq 可用）
-        if command -v yq >/dev/null 2>&1; then
-          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
-            [ -f "$f" ] || continue
-            echo "--- validate $f"
-            yq eval '.' "$f" >/dev/null
-          done
-          echo "✅ YAML basic validation passed"
-        else
-          echo "⚠️ yq not available for validation (should be installed earlier)"
-        fi
-
-    - name: Push Synced & Modified Changes
+    - name: Trigger remote workflow via REST API (curl)
       env:
-        GIT_AUTH_TOKEN: ${{ secrets.PAT_TOKEN2 }}
+        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN2 }}
       run: |
         set -euo pipefail
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "✨ Changes detected, preparing to push..."
-          git add -A
-          git commit -m "⚙️ Auto Sync: Workflows trimmed and configs adjusted via automation" || echo "No commit (maybe nothing staged)"
-          # 用 PAT 推送（actions/checkout 已把凭据写入）
-          git push origin main
-          echo "✅ Pushed changes to origin/main"
-        else
-          echo "🛑 No changes to push."
-        fi
+        echo "Triggering workflow 'Auto-Sync.yml' in htcnokia/OpenWRT-CI (ref=main)..."
+        curl -sS -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $GITHUB_TOKEN2" \
+          https://api.github.com/repos/htcnokia/OpenWRT-CI/actions/workflows/Auto-Sync.yml/dispatches \
+          -d '{"ref":"main"}' \
+        && echo "✅ Dispatch request sent."
