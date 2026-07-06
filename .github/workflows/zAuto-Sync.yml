@@ -17,14 +17,14 @@ jobs:
     - name: Check PAT available
       run: |
         if [ -z "${{ secrets.PAT_TOKEN2 }}" ]; then
-          echo "ERROR: secrets.PAT_TOKEN is empty" >&2
+          echo "ERROR: secrets.PAT_TOKEN2 is empty" >&2
           exit 1
         fi
         echo "PAT token present (not displayed)."
 
     - name: Trigger remote workflow via REST API (curl)
       env:
-        GITHUB_TOKEN: ${{ secrets.PAT_TOKEN2 }}
+        GITHUB_TOKEN2: ${{ secrets.PAT_TOKEN2 }}
       run: |
         set -euo pipefail
         echo "Triggering workflow 'Auto-Sync.yml' in htcnokia/OpenWRT-CI (ref=main)..."
